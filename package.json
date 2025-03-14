@@ -1,0 +1,12 @@
+{
+  "name": "fesguide",
+  "version": "1.0.0",
+  "description": "FesGuide - AI-powered virtual tourist guide for Fes, Morocco",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  },
+  "private": true
+} 
