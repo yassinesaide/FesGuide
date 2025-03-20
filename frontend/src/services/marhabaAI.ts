@@ -10,20 +10,34 @@ interface AIConfig {
   apiKey: string;
   model: string;
   endpoint: string;
+  temperature?: number;
+  maxTokens?: number;
 }
 
 // Extend Window interface to include our environment variables
 declare global {
   interface Window {
     ENV_VITE_HUGGINGFACE_API_KEY?: string;
+    ENV_VITE_SILICONFLOW_API_KEY?: string;
   }
 }
 
-// Default configuration for Hugging Face
+// Configuration for Silicon Flow's Qwen model
+const qwenConfig: AIConfig = {
+  apiKey: import.meta.env.VITE_SILICONFLOW_API_KEY || '',
+  model: 'Qwen/QwQ-32B',
+  endpoint: 'https://api.siliconflow.cn/v1/chat/completions',
+  temperature: 0.0,
+  maxTokens: 4096
+};
+
+// Default configuration for Hugging Face (as backup)
 const defaultAIConfig: AIConfig = {
   apiKey: import.meta.env.VITE_HUGGINGFACE_API_KEY || '',
-  model: 'mistralai/Mistral-7B-Instruct-v0.2',  // Reliable and working model
+  model: 'mistralai/Mistral-7B-Instruct-v0.2',
   endpoint: 'https://api-inference.huggingface.co/models/',
+  temperature: 0.7,
+  maxTokens: 2048
 };
 
 // Backup model in case the primary one fails
@@ -31,6 +45,8 @@ const backupAIConfig: AIConfig = {
   apiKey: import.meta.env.VITE_HUGGINGFACE_API_KEY || '',
   model: 'GRMenon/mental-health-mistral-7b-instructv0.2-finetuned-V2',  // Reliable backup model
   endpoint: 'https://api-inference.huggingface.co/models/',
+  temperature: 0.7,
+  maxTokens: 2048
 };
 
 // Config flag to disable external API calls and use only simulated responses
@@ -609,56 +625,119 @@ const detectLocationRequest = (message: string): Location | null => {
   return null;
 };
 
-// Enhanced API call function with better error handling and retries
+// Enhanced API call function with Silicon Flow support
 async function callAPI(config: AIConfig, prompt: string, retryCount = 0): Promise<string> {
   try {
-    // Format prompt according to Mistral's requirements
-    const formattedPrompt = `<s>[INST] ${prompt} [/INST]</s>`;
-    
-    const response = await fetch(`${config.endpoint}${config.model}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
+    let formattedPrompt;
+    let apiEndpoint;
+    let requestBody;
+
+    if (config.model.includes('Qwen')) {
+      // Silicon Flow Qwen format
+      apiEndpoint = config.endpoint;
+      
+      // Check if API key is available
+      if (!config.apiKey) {
+        throw new Error('Silicon Flow API key is not configured. Please set VITE_SILICONFLOW_API_KEY in your environment.');
+      }
+
+      // Remove any whitespace from API key
+      const cleanApiKey = config.apiKey.trim();
+
+      requestBody = {
+        model: "Qwen/QwQ-32B",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful assistant."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.0,
+        max_tokens: 4096,
+        stream: false
+      };
+
+      const headers = new Headers({
+        'Authorization': `Bearer ${cleanApiKey}`,
         'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+      });
+
+      // Log request details for debugging (without sensitive info)
+      console.log('Making request to:', apiEndpoint);
+
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(requestBody),
+        mode: 'cors',  // Add CORS mode
+        cache: 'no-cache'  // Disable caching
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API call failed: ${response.status} ${response.statusText}\nDetails: ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.choices && result.choices[0]?.message?.content) {
+        return result.choices[0].message.content.trim();
+      }
+      throw new Error('Invalid response format from Silicon Flow API');
+    } else {
+      // Hugging Face format
+      apiEndpoint = `${config.endpoint}${config.model}`;
+      formattedPrompt = `<s>[INST] ${prompt} [/INST]</s>`;
+      requestBody = {
         inputs: formattedPrompt,
         parameters: {
-          max_new_tokens: 500,
-          temperature: 0.7,
+          max_new_tokens: config.maxTokens,
+          temperature: config.temperature,
           top_p: 0.95,
           do_sample: true,
           return_full_text: false
         }
-      })
-    });
+      };
 
-    if (!response.ok) {
-      throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API call failed: ${response.status} ${response.statusText}\nDetails: ${errorText}`);
+      }
+
+      const result = await response.json();
+
+      if (Array.isArray(result) && result.length > 0 && result[0].generated_text) {
+        return result[0].generated_text.trim();
+      }
     }
 
-    const result = await response.json();
-    
-    // Check if we got a valid response
-    if (Array.isArray(result) && result.length > 0 && result[0].generated_text) {
-      return result[0].generated_text.trim();
-    }
-    
     throw new Error('Invalid response format from API');
   } catch (error) {
     console.warn(`API call attempt ${retryCount + 1} failed:`, error);
-    
+
     if (retryCount < 2) {
-      // Exponential backoff: wait longer between each retry
       await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, retryCount)));
       return callAPI(config, prompt, retryCount + 1);
     }
-    
+
     throw error;
   }
 }
 
-// Enhanced sendMessage function to handle location requests
+// Update sendMessage function to use Qwen as primary model
 export const sendMessage = async (
   messages: ChatMessage[],
   language: Language,
@@ -670,9 +749,7 @@ export const sendMessage = async (
     const requestedLocation = detectLocationRequest(lastMessage);
 
     if (requestedLocation) {
-      // Generate response with navigation instructions
       const response = `I'll help you navigate to ${requestedLocation.name}. ${requestedLocation.description}\n\nI've opened the map navigation to guide you there. You can start tracking your route by clicking "Start Navigation". I'll provide real-time directions as you walk.`;
-      
       return {
         text: response,
         location: requestedLocation
@@ -682,8 +759,7 @@ export const sendMessage = async (
     if (!USE_SIMULATED_RESPONSES_ONLY) {
       const lastMessage = messages[messages.length - 1].content.toLowerCase();
       let locationInfo: Location | undefined;
-      
-      // Check if the message is asking about a location
+
       for (const [key, location] of Object.entries(fesLocations)) {
         if (lastMessage.includes(location.name.toLowerCase()) || 
             lastMessage.includes(key.replace(/_/g, ' '))) {
@@ -692,10 +768,8 @@ export const sendMessage = async (
         }
       }
 
-      // Prepare conversation history (last 3 messages only to keep context concise)
       const history = messages.slice(-3).map(m => `${m.role}: ${m.content}`).join('\n');
       
-      // Create a more focused prompt with location awareness
       const prompt = `You are Marhaba, a knowledgeable tour guide specializing in Fes, Morocco.
 Role: Professional tour guide
 Language: ${language}
@@ -716,33 +790,42 @@ Description: ${locationInfo.description}
 Provide a helpful response in ${language} about Fes, focusing on accurate information and cultural sensitivity.`;
 
       try {
-        // Try primary model
-        const response = await callAPI(defaultAIConfig, prompt);
+        // Try Qwen model first
+        const response = await callAPI(qwenConfig, prompt);
         if (response && response.length > 50) {
           return { text: response };
         }
-      } catch (primaryError) {
-        console.warn('Primary model failed:', primaryError);
+      } catch (qwenError) {
+        console.warn('Qwen model failed:', qwenError);
         
         try {
-          // Try backup model with a simplified prompt
-          const backupPrompt = `As a tour guide in Fes, Morocco, respond in ${language} to this question: ${messages[messages.length - 1].content}
-${locationInfo ? `\nLocation: ${locationInfo.name} at ${locationInfo.coordinates.latitude}, ${locationInfo.coordinates.longitude}` : ''}
-Previous context: ${history}`;
-          
-          const response = await callAPI(backupAIConfig, backupPrompt);
+          // Fallback to Hugging Face model
+          const response = await callAPI(defaultAIConfig, prompt);
           if (response && response.length > 50) {
             return { text: response };
           }
-        } catch (backupError) {
-          console.warn('Backup model failed:', backupError);
+        } catch (hfError) {
+          console.warn('Hugging Face model failed:', hfError);
+          
+          try {
+            // Try backup model as last resort
+            const backupPrompt = `As a tour guide in Fes, Morocco, respond in ${language} to this question: ${messages[messages.length - 1].content}
+${locationInfo ? `\nLocation: ${locationInfo.name} at ${locationInfo.coordinates.latitude}, ${locationInfo.coordinates.longitude}` : ''}
+Previous context: ${history}`;
+            
+            const response = await callAPI(backupAIConfig, backupPrompt);
+            if (response && response.length > 50) {
+              return { text: response };
+            }
+          } catch (backupError) {
+            console.warn('Backup model failed:', backupError);
+          }
         }
       }
     }
 
-    // Fallback to dynamic response if API calls fail
-    const lastUserMessage = messages[messages.length - 1].content;
-    const category = categorizeMessage(lastUserMessage);
+    // Fallback to dynamic response if all API calls fail
+    const category = categorizeMessage(lastMessage);
     return { text: createDynamicResponse(messages, category, language, guideConfig) };
   } catch (error) {
     console.error('Error generating response:', error);

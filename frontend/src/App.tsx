@@ -4,7 +4,7 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import Home from "./pages/Home";
 import Places from "./pages/Places";
-import PlaceDetail from "./pages/PlaceDetail";
+import PlaceBlog from "./components/PlaceBlog";
 import Guide from "./pages/Guide";
 import About from "./pages/About";
 import TrainModel from "./pages/TrainModel";
@@ -43,7 +43,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/places" element={<Places />} />
-            <Route path="/places/:id" element={<PlaceDetail />} />
+            <Route path="/places/:id" element={<PlaceBlog />} />
             <Route path="/guide" element={<Guide />} />
             <Route path="/about" element={<About />} />
             <Route path="/train" element={<TrainModel />} />
