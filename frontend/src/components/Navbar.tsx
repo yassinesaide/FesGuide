@@ -1,9 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
+import authService from "../services/authService";
+import { Button } from "@mui/material";
+import { Login as LoginIcon } from "@mui/icons-material";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const location = useLocation();
 
   const toggleMenu = () => {
@@ -20,10 +25,21 @@ const Navbar = () => {
     };
 
     window.addEventListener("scroll", handleScroll);
+
+    // Check auth status
+    const checkAuthStatus = () => {
+      const authStatus = authService.isAuthenticated();
+      const adminStatus = authService.isAdmin();
+      setIsAuthenticated(authStatus);
+      setIsAdmin(adminStatus);
+    };
+
+    checkAuthStatus();
+
     return () => {
       window.removeEventListener("scroll", handleScroll);
     };
-  }, []);
+  }, [location]); // Re-check on location change
 
   const isActive = (path: string) => {
     return location.pathname === path;
@@ -47,7 +63,7 @@ const Navbar = () => {
           </div>
 
           {/* Desktop Menu */}
-          <div className="hidden md:flex space-x-8">
+          <div className="hidden md:flex space-x-8 items-center">
             <Link
               to="/"
               className={`text-white/90 hover:text-fes-amber transition-colors duration-300 font-medium ${
@@ -73,6 +89,24 @@ const Navbar = () => {
               AI Guide
             </Link>
             <Link
+              to="/premium"
+              className={`text-white/90 hover:text-fes-amber transition-colors duration-300 font-medium ${
+                isActive("/premium") ? "text-fes-amber" : ""
+              }`}
+            >
+              Premium
+            </Link>
+            {isAdmin && (
+              <Link
+                to="/dashboard"
+                className={`text-white/90 hover:text-fes-amber transition-colors duration-300 font-medium ${
+                  isActive("/dashboard") ? "text-fes-amber" : ""
+                }`}
+              >
+                Dashboard
+              </Link>
+            )}
+            <Link
               to="/about"
               className={`text-white/90 hover:text-fes-amber transition-colors duration-300 font-medium ${
                 isActive("/about") ? "text-fes-amber" : ""
@@ -80,6 +114,24 @@ const Navbar = () => {
             >
               About
             </Link>
+
+            {/* Login/Dashboard Button */}
+            {isAuthenticated ? (
+              <Link
+                to="/dashboard"
+                className="bg-fes-amber text-fes-blue px-4 py-2 rounded-full font-medium hover:bg-amber-400 transition-colors duration-300"
+              >
+                Dashboard
+              </Link>
+            ) : (
+              <Link
+                to="/login"
+                className="bg-fes-amber text-fes-blue px-4 py-2 rounded-full font-medium hover:bg-amber-400 transition-colors duration-300 flex items-center"
+              >
+                <LoginIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                Login
+              </Link>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -148,6 +200,26 @@ const Navbar = () => {
                 AI Guide
               </Link>
               <Link
+                to="/premium"
+                className={`text-white/90 hover:text-fes-amber transition-colors duration-300 font-medium ${
+                  isActive("/premium") ? "text-fes-amber" : ""
+                }`}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Premium
+              </Link>
+              {isAdmin && (
+                <Link
+                  to="/dashboard"
+                  className={`text-white/90 hover:text-fes-amber transition-colors duration-300 font-medium ${
+                    isActive("/dashboard") ? "text-fes-amber" : ""
+                  }`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Dashboard
+                </Link>
+              )}
+              <Link
                 to="/about"
                 className={`text-white/90 hover:text-fes-amber transition-colors duration-300 font-medium ${
                   isActive("/about") ? "text-fes-amber" : ""
@@ -156,6 +228,18 @@ const Navbar = () => {
               >
                 About
               </Link>
+
+              {/* Login Button for Mobile */}
+              {!isAuthenticated && (
+                <Link
+                  to="/login"
+                  className="bg-fes-amber text-fes-blue px-4 py-2 rounded-full font-medium text-center hover:bg-amber-400 transition-colors duration-300 mt-2 flex items-center justify-center w-full"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <LoginIcon sx={{ fontSize: 18, mr: 0.5 }} />
+                  Login
+                </Link>
+              )}
             </div>
           </div>
         )}

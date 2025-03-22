@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import LanguageSelector, { Language } from "./LanguageSelector";
-import { sendMessage } from "../services/marhabaAI";
+import {
+  sendMessage,
+  generateImage,
+  generateAudio,
+} from "../services/marhabaAI";
 import MapNavigation from "./MapNavigation";
 
 interface Message {
@@ -9,6 +13,8 @@ interface Message {
   text: string;
   sender: "user" | "assistant";
   timestamp: Date;
+  imageUrl?: string;
+  audioUrl?: string;
 }
 
 interface Location {
@@ -37,6 +43,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onClose }) => {
     name: string;
     coordinates: { latitude: number; longitude: number };
   } | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   // Welcome messages in different languages
   const welcomeMessages = {
@@ -63,6 +72,66 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onClose }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleGenerateImage = async (prompt: string) => {
+    try {
+      setIsGeneratingImage(true);
+      console.log("Starting image generation for prompt:", prompt);
+      const imageUrl = await generateImage(prompt);
+      console.log("Successfully generated image:", imageUrl);
+      const imageMessage: Message = {
+        id: Date.now().toString(),
+        text: "Here's what I found in Fes matching your request:",
+        sender: "assistant",
+        timestamp: new Date(),
+        imageUrl,
+      };
+      setMessages((prev) => [...prev, imageMessage]);
+    } catch (error) {
+      console.error("Error generating image:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error occurred";
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        text: `I apologize, but I couldn't generate that image: ${errorMessage}. Please try again in a moment.`,
+        sender: "assistant",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
+  const handleGenerateAudio = async (text: string) => {
+    try {
+      setIsGeneratingAudio(true);
+      console.log("Starting audio generation for text:", text);
+      const audioUrl = await generateAudio(text);
+      console.log("Successfully generated audio:", audioUrl);
+      const audioMessage: Message = {
+        id: Date.now().toString(),
+        text: "Here's your audio guide about Fes:",
+        sender: "assistant",
+        timestamp: new Date(),
+        audioUrl,
+      };
+      setMessages((prev) => [...prev, audioMessage]);
+    } catch (error) {
+      console.error("Error generating audio:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error occurred";
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        text: `I apologize, but I couldn't generate the audio guide: ${errorMessage}. Please try again in a moment.`,
+        sender: "assistant",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+    } finally {
+      setIsGeneratingAudio(false);
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
@@ -78,7 +147,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onClose }) => {
     setIsLoading(true);
 
     try {
-      // Convert messages to format expected by API
       const chatMessages = messages
         .filter((msg) => msg.id !== "welcome")
         .map((msg) => ({
@@ -86,28 +154,50 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onClose }) => {
           content: msg.text,
         }));
 
-      // Add the new user message
       chatMessages.push({
         role: "user",
         content: userMessage.text,
       });
 
-      // Get response from API
-      const response = await sendMessage(chatMessages, language);
+      // Check for image or audio generation commands
+      const lowerCaseMessage = userMessage.text.toLowerCase();
+      if (lowerCaseMessage.includes("/generate image")) {
+        const prompt = userMessage.text.replace(/\/generate image/i, "").trim();
+        await handleGenerateImage(prompt);
+      } else if (lowerCaseMessage.includes("/generate audio")) {
+        const text = userMessage.text.replace(/\/generate audio/i, "").trim();
+        await handleGenerateAudio(text);
+      } else if (
+        lowerCaseMessage.includes("show me") ||
+        lowerCaseMessage.includes("picture of")
+      ) {
+        // Implicit image generation for natural language requests
+        const prompt = userMessage.text
+          .replace(/show me|picture of/i, "")
+          .trim();
+        await handleGenerateImage(prompt);
+      } else if (
+        lowerCaseMessage.includes("tell me about") ||
+        lowerCaseMessage.includes("guide me through")
+      ) {
+        // Implicit audio generation for natural language requests
+        const text = userMessage.text
+          .replace(/tell me about|guide me through/i, "")
+          .trim();
+        await handleGenerateAudio(text);
+      } else {
+        const response = await sendMessage(chatMessages, language);
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: response.text,
+          sender: "assistant",
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
 
-      // Add assistant response to messages
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: response.text,
-        sender: "assistant",
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      // If location is provided, update the map
-      if (response.location) {
-        setCurrentLocation(response.location);
+        if (response.location) {
+          setCurrentLocation(response.location);
+        }
       }
     } catch (error) {
       console.error("Error sending message:", error);
@@ -229,9 +319,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onClose }) => {
                 } max-w-[90%] ${message.sender === "user" ? "ml-auto" : ""}`}
               >
                 <p className="text-sm">{message.text}</p>
+                {message.imageUrl && (
+                  <img
+                    src={message.imageUrl}
+                    alt="Generated"
+                    className="mt-2 rounded-lg max-w-full h-auto"
+                  />
+                )}
+                {message.audioUrl && (
+                  <audio
+                    ref={audioRef}
+                    controls
+                    className="mt-2 w-full"
+                    src={message.audioUrl}
+                  >
+                    Your browser does not support the audio element.
+                  </audio>
+                )}
               </motion.div>
             ))}
-            {isLoading && (
+            {(isLoading || isGeneratingImage || isGeneratingAudio) && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}

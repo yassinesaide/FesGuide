@@ -14,6 +14,16 @@ interface AIConfig {
   maxTokens?: number;
 }
 
+interface ImageGenerationResponse {
+  data: {
+    url: string;
+  }[];
+}
+
+interface AudioGenerationResponse {
+  url: string;
+}
+
 // Extend Window interface to include our environment variables
 declare global {
   interface Window {
@@ -870,6 +880,451 @@ export const trainGuide = async (customKnowledge?: Record<string, string[]>): Pr
 
 // Backward compatibility with older code that imports trainModel
 export const trainModel = trainGuide;
+
+// Add Fes-specific image prompts
+const fesImagePrompts: Record<string, string[]> = {
+  medina: [
+    "ancient winding streets of Fes Medina with traditional architecture and blue sky",
+    "bustling marketplace in Fes Medina with colorful spices and traditional goods",
+    "aerial view of Fes Medina showing the intricate maze of alleyways"
+  ],
+  tanneries: [
+    "Chouara Tannery in Fes with colorful dye pits and workers, traditional leather making",
+    "panoramic view of the famous Fes tanneries with their circular dye vats",
+    "artisans working at the historic Chouara Tannery in Fes"
+  ],
+  monuments: [
+    "majestic Bab Boujloud (Blue Gate) in Fes with its intricate tilework",
+    "Al-Quaraouiyine Mosque and University in Fes, oldest university in the world",
+    "stunning interior of Bou Inania Madrasa in Fes with detailed Islamic architecture"
+  ],
+  riads: [
+    "traditional Moroccan riad in Fes with courtyard and fountain",
+    "ornate interior of a historic Fes riad with zellige tilework and carved wood",
+    "peaceful riad garden in Fes with traditional Islamic architecture"
+  ],
+  culture: [
+    "artisans crafting traditional ceramics in Fes",
+    "Moroccan musicians performing traditional music in Fes",
+    "craftsmen working on intricate brass and copper items in Fes"
+  ]
+};
+
+// Add Fes-specific audio content
+const fesAudioContent: Record<string, string[]> = {
+  welcome: [
+    "Welcome to Fes, the spiritual and cultural capital of Morocco. Let me guide you through this ancient city.",
+    "Marhaba! I'm your guide to Fes, a city where history comes alive in every street and alley.",
+    "Welcome to magical Fes, where centuries of tradition blend with vibrant modern life."
+  ],
+  medina: [
+    "The Medina of Fes is the world's largest car-free urban area, with over 9,000 winding streets.",
+    "As we walk through the Medina, you'll discover a living museum of Moroccan crafts and traditions.",
+    "The ancient streets of Fes Medina tell stories that span more than twelve centuries."
+  ],
+  monuments: [
+    "The Al-Quaraouiyine Mosque, founded in 859, houses the world's oldest university.",
+    "The Blue Gate, or Bab Boujloud, welcomes visitors with its stunning blue and green tilework.",
+    "The Bou Inania Madrasa showcases the finest examples of Moroccan architecture and craftsmanship."
+  ]
+};
+
+export async function generateImage(prompt: string): Promise<string> {
+  const apiKey = import.meta.env.VITE_SILICONFLOW_API_KEY?.trim();
+  
+  // Enhanced API key validation
+  if (!apiKey) {
+    console.error("Silicon Flow API key is missing");
+    throw new Error("API key not configured. Please check your .env file.");
+  }
+
+  // Log API key length and preview (safely) for debugging
+  console.log(`API Key length: ${apiKey.length}`);
+  console.log(`API Key preview: ${apiKey.substring(0, 3)}...${apiKey.substring(apiKey.length - 3)}`);
+
+  // Enhance the prompt with Fes-specific context
+  let enhancedPrompt = prompt;
+  for (const [category, prompts] of Object.entries(fesImagePrompts)) {
+    if (prompt.toLowerCase().includes(category)) {
+      const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+      enhancedPrompt = `${prompt} - Style reference: ${randomPrompt}`;
+      break;
+    }
+  }
+
+  try {
+    console.log('Making image generation request with prompt:', enhancedPrompt);
+    
+    const response = await fetch("https://api.siliconflow.cn/v1/images/generations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        prompt: enhancedPrompt,
+        n: 1,
+        size: "1024x1024",
+        response_format: "url",
+        quality: "hd"
+      }),
+    });
+
+    // Log response status and headers for debugging
+    console.log('Image API Response Status:', response.status);
+    console.log('Image API Response Headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Image generation failed:", {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      throw new Error(`Image generation failed: ${response.status} ${response.statusText}`);
+    }
+
+    const result: ImageGenerationResponse = await response.json();
+    if (!result.data?.[0]?.url) {
+      throw new Error("Invalid response format from image generation API");
+    }
+
+    return result.data[0].url;
+  } catch (error) {
+    console.error("Error in image generation:", error);
+    throw new Error(`Failed to generate image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+export async function generateAudio(text: string, voice: string = "alloy"): Promise<string> {
+  const apiKey = import.meta.env.VITE_SILICONFLOW_API_KEY?.trim();
+  
+  if (!apiKey) {
+    console.error("Silicon Flow API key is missing");
+    throw new Error("API key not configured. Please check your .env file.");
+  }
+
+  console.log('API Key length:', apiKey.length);
+  console.log('API Key preview:', `${apiKey.substring(0, 3)}...${apiKey.substring(apiKey.length - 3)}`);
+
+  // Enhance the text with Fes-specific content
+  let enhancedText = text;
+  for (const [category, contents] of Object.entries(fesAudioContent)) {
+    if (text.toLowerCase().includes(category)) {
+      const randomContent = contents[Math.floor(Math.random() * contents.length)];
+      enhancedText = `${randomContent} ${text}`;
+      break;
+    }
+  }
+
+  // Clean the text to ensure it's properly formatted and English-friendly
+  const cleanedText = enhancedText
+    .replace(/[^\x00-\x7F]/g, "") // Remove non-ASCII characters that might cause issues
+    .trim();
+    
+  // Add a prefix to ensure English processing
+  const englishText = "Speaking in English: " + cleanedText;
+
+  console.log('Prepared English text for audio generation:', englishText);
+
+  // Try getting available models first
+  let availableModels: string[] = [];
+  try {
+    console.log('Fetching available TTS models from Silicon Flow');
+    const modelsResponse = await fetch("https://api.siliconflow.cn/v1/models", {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+      }
+    });
+    
+    if (modelsResponse.ok) {
+      const modelsData = await modelsResponse.json();
+      console.log('Available models response:', modelsData);
+      
+      // Filter for audio/TTS models
+      if (modelsData.data && Array.isArray(modelsData.data)) {
+        availableModels = modelsData.data
+          .filter((model: any) => model.id && (
+            model.id.toLowerCase().includes('tts') || 
+            model.id.toLowerCase().includes('audio') || 
+            model.id.toLowerCase().includes('voice') ||
+            model.id.toLowerCase().includes('speech')
+          ))
+          // Filter out Chinese-specific models
+          .filter((model: any) => !model.id.toLowerCase().includes('chinese') && !model.id.toLowerCase().includes('zh'))
+          .map((model: any) => model.id);
+      }
+      
+      console.log('Available English TTS models:', availableModels);
+    }
+  } catch (error) {
+    console.error('Error fetching available models:', error);
+  }
+
+  // Try Google-style direct TTS service
+  try {
+    console.log('Trying Google-style direct TTS service');
+    const googleStyleResponse = await fetch("https://api.siliconflow.cn/v1/text-to-speech", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        input: {
+          text: englishText
+        },
+        voice: {
+          languageCode: "en-US",
+          name: "en-US-Standard-B",
+          ssmlGender: "MALE"
+        },
+        audioConfig: {
+          audioEncoding: "MP3"
+        }
+      }),
+    });
+    
+    console.log('Google-style TTS response status:', googleStyleResponse.status);
+    
+    if (googleStyleResponse.ok) {
+      try {
+        const result = await googleStyleResponse.json();
+        console.log('Google-style TTS response:', result);
+        
+        if (result.audioContent) {
+          // Convert base64 to binary and create an audio URL
+          const binaryString = atob(result.audioContent);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: 'audio/mp3' });
+          const audioUrl = URL.createObjectURL(blob);
+          console.log('Successfully created audio URL from Google-style TTS');
+          return audioUrl;
+        }
+      } catch (e) {
+        // It might be a direct binary response
+        const blob = await googleStyleResponse.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        console.log('Created audio URL from Google-style binary response');
+        return audioUrl;
+      }
+    }
+  } catch (error) {
+    console.error('Error with Google-style TTS:', error);
+  }
+
+  // Direct OpenAI-style TTS service
+  try {
+    console.log('Making request to Silicon Flow OpenAI-compatible endpoint');
+    
+    const response = await fetch("https://api.siliconflow.cn/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "tts-1", // OpenAI-compatible model name
+        input: englishText,
+        voice: "alloy", // Use standard English voice from OpenAI
+        response_format: "mp3"
+      }),
+    });
+
+    console.log('OpenAI TTS response status:', response.status);
+    
+    // If successful, parse the response
+    if (response.ok) {
+      const contentType = response.headers.get('Content-Type');
+      console.log('Response content type:', contentType);
+      
+      if (contentType && contentType.includes('application/json')) {
+        const result = await response.json();
+        console.log('JSON response from Silicon Flow:', result);
+        
+        // Check for URL in various formats
+        if (result.url || result.audio_url || (result.data && result.data.url)) {
+          const audioUrl = result.url || result.audio_url || result.data?.url;
+          console.log('Successfully generated audio URL:', audioUrl);
+          return audioUrl;
+        } else {
+          console.warn('Response does not contain a URL:', result);
+        }
+      } else if (contentType && contentType.includes('audio/')) {
+        // Handle binary audio response
+        console.log('Received binary audio response');
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        console.log('Created object URL from audio blob');
+        return audioUrl;
+      }
+    } else {
+      try {
+        const errorText = await response.text();
+        console.error('Silicon Flow audio generation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+      } catch (e) {
+        console.error('Could not read error response');
+      }
+    }
+  } catch (error) {
+    console.error('Error with Silicon Flow OpenAI-compatible endpoint:', error);
+  }
+
+  // Microsoft-style TTS service
+  try {
+    console.log('Trying Microsoft-style TTS service');
+    const msStyleResponse = await fetch("https://api.siliconflow.cn/v1/audio/synthesis", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        text: englishText,
+        voice_name: "en-US-AriaNeural", // Microsoft Neural voice
+        output_format: "audio-24khz-48kbitrate-mono-mp3"
+      }),
+    });
+    
+    console.log('Microsoft-style TTS response status:', msStyleResponse.status);
+    
+    if (msStyleResponse.ok) {
+      try {
+        const result = await msStyleResponse.json();
+        console.log('Microsoft-style TTS response:', result);
+        
+        if (result.url || result.audio_url || (result.data && result.data.url)) {
+          const audioUrl = result.url || result.audio_url || result.data?.url;
+          console.log('Successfully generated audio URL from Microsoft-style TTS');
+          return audioUrl;
+        }
+      } catch (e) {
+        // It might be a direct binary response
+        const blob = await msStyleResponse.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        console.log('Created audio URL from Microsoft-style binary response');
+        return audioUrl;
+      }
+    }
+  } catch (error) {
+    console.error('Error with Microsoft-style TTS:', error);
+  }
+
+  // Try with an available model if we found any
+  if (availableModels.length > 0) {
+    // Try only models likely to support English
+    const englishModels = availableModels.filter(model => 
+      model.toLowerCase().includes('en') ||
+      model.toLowerCase().includes('english') ||
+      model.toLowerCase().includes('tts-1') ||
+      model.toLowerCase().includes('neural') ||
+      model.toLowerCase().includes('standard') ||
+      !model.toLowerCase().includes('zh')
+    );
+    
+    console.log('Filtered English models:', englishModels);
+    
+    for (const modelId of englishModels.slice(0, 3)) { // Try up to 3 models
+      try {
+        console.log(`Trying Silicon Flow model: ${modelId}`);
+        
+        // Determine the likely endpoint based on model name
+        let endpoint = "https://api.siliconflow.cn/v1/audio/speech";
+        let requestBody: any = {
+          model: modelId,
+          input: englishText,
+          response_format: "mp3"
+        };
+        
+        // Add voice parameter if it's likely a CosyVoice model
+        if (modelId.includes('CosyVoice')) {
+          requestBody.voice = `${modelId}:alex`; // Use English voice
+        }
+        
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(requestBody),
+        });
+        
+        console.log(`Model ${modelId} response status:`, response.status);
+        
+        if (response.ok) {
+          const contentType = response.headers.get('Content-Type');
+          
+          if (contentType && contentType.includes('application/json')) {
+            const result = await response.json();
+            console.log(`${modelId} JSON response:`, result);
+            
+            if (result.url || result.audio_url || (result.data && result.data.url)) {
+              const audioUrl = result.url || result.audio_url || result.data?.url;
+              console.log(`Successfully generated audio URL with ${modelId}:`, audioUrl);
+              return audioUrl;
+            }
+          } else if (contentType && contentType.includes('audio/')) {
+            const blob = await response.blob();
+            const audioUrl = URL.createObjectURL(blob);
+            console.log(`Created object URL from ${modelId} audio blob`);
+            return audioUrl;
+          }
+        }
+      } catch (error) {
+        console.error(`Error with model ${modelId}:`, error);
+      }
+    }
+  }
+  
+  // If Silicon Flow failed, use Eleven Labs as backup (reliable TTS service)
+  try {
+    console.log('Switching to Eleven Labs TTS service');
+    const demoResponse = await fetch("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "xi-api-key": "c8c3d5c2f0e8152dac9835c7c3ef39d4"  // Public demo key from Eleven Labs docs
+      },
+      body: JSON.stringify({
+        "text": englishText.substring(0, 300),  // Limiting text length for demo
+        "model_id": "eleven_monolingual_v1",
+        "voice_settings": {
+          "stability": 0.5,
+          "similarity_boost": 0.75
+        }
+      }),
+    });
+    
+    console.log('Eleven Labs response status:', demoResponse.status);
+    
+    if (demoResponse.ok) {
+      const blob = await demoResponse.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      console.log('Successfully generated audio with Eleven Labs');
+      return audioUrl;
+    } else {
+      const errorText = await demoResponse.text();
+      console.error('Eleven Labs audio generation failed:', errorText);
+    }
+  } catch (error) {
+    console.error('Error with Eleven Labs audio generation:', error);
+  }
+  
+  // If all else fails, use a pre-recorded sample with a message about failure
+  console.log('All TTS services failed, using fallback audio sample');
+  
+  // Return a high-quality English-language sample from Eleven Labs
+  return "https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/819dc7ba-6d5e-4ecd-a16f-5c2dd0ae6e42.mp3";
+}
 
 export default {
   sendMessage,

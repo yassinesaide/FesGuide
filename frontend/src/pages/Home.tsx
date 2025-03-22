@@ -3,6 +3,10 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ChatInterface from "../components/ChatInterface";
 import { createGlobalStyle } from "styled-components";
+import AdminLoginUtil from "../components/auth/AdminLoginUtil";
+import PremiumBundles from "../components/PremiumBundles";
+import SubscriptionPlans from "../components/SubscriptionPlans";
+import RewardsProgram from "../components/RewardsProgram";
 
 // Import images
 import qarawiyyin from "../assets/images/qarawin fes.jpg";
@@ -103,7 +107,7 @@ const Home = () => {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1 }}
-            className="max-w-4xl mx-auto"
+            className="max-w-4xl mx-auto relative"
           >
             <h1 className="text-6xl md:text-8xl font-bold mb-8 text-white font-arabic">
               مرحبا بكم في فاس
@@ -115,10 +119,10 @@ const Home = () => {
               Step into the ancient medina of Fes, where centuries of history
               await your discovery
             </p>
-            <div className="flex flex-col sm:flex-row gap-6 justify-center">
+            <div className="flex flex-col sm:flex-row gap-6 justify-center relative z-20 pointer-events-auto">
               <Link
-                to="/guide"
-                className="group relative overflow-hidden rounded-full bg-fes-amber px-8 py-4 transition-all duration-300"
+                to="/timeline"
+                className="group relative overflow-hidden rounded-full bg-fes-amber px-8 py-4 transition-all duration-300 z-10"
               >
                 <span className="relative z-10 text-lg font-semibold text-white">
                   Begin Your Journey
@@ -270,7 +274,7 @@ const Home = () => {
                   initial={{ opacity: 0, x: 50 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.8 }}
-                  className="bg-white rounded-2xl p-8 shadow-xl"
+                  className="bg-white rounded-2xl p-8 shadow-xl relative"
                 >
                   <div className="space-y-6">
                     <div className="flex items-center gap-4">
@@ -353,10 +357,10 @@ const Home = () => {
                   </div>
 
                   {/* Call to Action */}
-                  <div className="mt-8">
+                  <div className="mt-8 relative z-20 pointer-events-auto">
                     <Link
-                      to="/guide"
-                      className="block w-full bg-gradient-to-r from-fes-blue to-fes-teal text-white text-center py-4 rounded-xl hover:shadow-lg transition-all duration-300"
+                      to="/timeline"
+                      className="block w-full bg-gradient-to-r from-fes-blue to-fes-teal text-white text-center py-4 rounded-xl hover:shadow-lg transition-all duration-300 relative z-10"
                     >
                       Start Exploring
                     </Link>
@@ -470,7 +474,7 @@ const Home = () => {
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8 }}
-              className="space-y-8"
+              className="space-y-8 relative"
             >
               <h2 className="text-4xl font-bold text-fes-blue">
                 Experience the Magic of Fes
@@ -480,10 +484,10 @@ const Home = () => {
                 From the bustling souks to the tranquil riads, discover the
                 authentic soul of Morocco's spiritual capital.
               </p>
-              <div className="pt-8">
+              <div className="pt-8 relative z-20 pointer-events-auto">
                 <Link
-                  to="/guide"
-                  className="inline-flex items-center gap-3 bg-gradient-to-r from-fes-blue to-fes-teal text-white px-8 py-4 rounded-full group hover:shadow-lg transition-all duration-300"
+                  to="/timeline"
+                  className="inline-flex items-center gap-3 bg-gradient-to-r from-fes-blue to-fes-teal text-white px-8 py-4 rounded-full group hover:shadow-lg transition-all duration-300 relative z-10"
                 >
                   <span className="text-lg font-semibold">
                     Start Your Journey
@@ -506,6 +510,18 @@ const Home = () => {
             </motion.div>
           </div>
         </div>
+      </section>
+
+      <section id="premium-bundles" className="relative">
+        <PremiumBundles />
+      </section>
+
+      <section id="subscription-plans" className="relative">
+        <SubscriptionPlans />
+      </section>
+
+      <section id="rewards-program" className="relative">
+        <RewardsProgram />
       </section>
 
       {/* Marhaba Chat Bot */}
